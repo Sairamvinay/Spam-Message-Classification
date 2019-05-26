@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import numpy as np
 import random as rd
 
@@ -7,52 +8,11 @@ rd.seed(999)
 
 from sklearn.model_selection import cross_val_score,StratifiedKFold,GridSearchCV
 from keras.wrappers.scikit_learn import KerasClassifier
+from keras.utils import to_categorical
+import __future__ as ft
 import keras
-import matplotlib.pyplot as plt
+import grapher
 
-
-def graph_optimize(x,y,gx_title,gy_title,g_title):
-    plt.plot(x,y)
-    plt.xlabel(gx_title)
-    plt.ylabel(gy_title)
-    plt.title(g_title)
-    plt.show()
-    plt.close('all')
-
-
-def graph_hyp():
-    batch_sizes = [100,200,300,400,500]
-    epochs = [150,300,450,600]
-    train_acc_BS = [0.99865375,0.9985793,0.9985044,0.9985044,0.9984296]
-    train_acc_EP = [0.998744,0.9983847,0.9985044,0.9985044]
-
-    test_acc_BS = [0.976446,0.977568,0.97712,0.977793,0.978385006]
-    test_acc_EP = [0.975774,0.9780,0.97783737,0.978376]
-    graph_optimize(batch_sizes,test_acc_BS,"Batch Size","Test Accuracy Averaged over different epochs","Test Accuracy vs Batch size")
-    graph_optimize(epochs,test_acc_EP,"Epochs","Test Accuracy Averaged over different Batch Size","Test Accuracy vs Epochs")
-
-
-
-
-def grapher(x,y,g_title):
-    fig, ax = plt.subplots()
-    plt.xlabel("Actual Output")
-    plt.ylabel("Predicted Output")
-    plt.title(g_title)
-    ax.scatter(x,y,c = 'b')
-
-    lims = [
-        np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
-        np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
-    ]
-
-    ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
-    ax.set_aspect('equal')
-    ax.set_xlim(lims)
-    ax.set_ylim(lims)
-    plt.savefig(g_title +  '.png')
-    plt.close('all')
-    
 
 def logisticRegression(train_IP,train_OP,test_IP,test_OP):
     correct_pred_test = 0
@@ -93,33 +53,79 @@ def logisticRegression(train_IP,train_OP,test_IP,test_OP):
 
 
 
-def keras_ANN(X_train,Y_train,X_test,Y_test,batch_size,epochs,optimizer = 'adam'):
-    
+#default parameters are the most optimal parameters
+def buildANN(X_train = None,Y_train=None,X_test=None,Y_test=None,hidden_layers = 3,activation = 'softsign',optimizer = 'Adam',neurons = 100,epochs = 75,batch_sizes = 400,loss = 'binary_crossentropy',GS = False):
     print "Welcome to Keras ANN"
     num_cols_train = 8451 #hardcoded for now
+    final_op_layers = 1
+    final_op_activation = "sigmoid"
+    if loss == 'categorical_crossentropy':
+        final_op_layers = 2
+        final_op_activation = "softmax"
+
+
     model = keras.models.Sequential()
-    model.add(keras.layers.Dense(128,input_shape=(num_cols_train,),activation = 'relu'))
-    model.add(keras.layers.Dense(64,activation = "relu"))
-    model.add(keras.layers.Dense(1,activation = "sigmoid"))
+    model.add(keras.layers.Dense(neurons, input_dim=num_cols_train,activation = activation))
+    
+    for i in range(hidden_layers):
+        model.add(keras.layers.Dense(neurons,activation = activation))
+
+
+    model.add(keras.layers.Dense(final_op_layers,activation = final_op_activation))
     print "Let's now compile the model"
-    model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+    model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
     
-    model.fit(X_train,Y_train,shuffle = False,epochs = epochs,batch_size = batch_size)
-    print "FINISHED..."
+    if GS:
+        return model
 
-    pred_train = model.predict(X_train)
-    eval_train = model.evaluate(X_train,Y_train)
-    print "The training set accuracy for the ANN is: ", (eval_train[1] * 100.00), "%"
+    else:
 
-    pred_test = model.predict(X_test)
-    eval_test = model.evaluate(X_test,Y_test)
-    print "The test set accuracy for the ANN is: ", (eval_test[1] * 100.00), "%"
+        #fix this later
+        '''print_weights1 = keras.callbacks.LambdaCallback(on_epoch_end=lambda epochs, logs: ft.print_function(model.layers[1].get_weights()))
+        print_weights2 = keras.callbacks.LambdaCallback(on_epoch_end=lambda batch, logs: ft.print_function(model.layers[2].get_weights()))
+        print_weights3 = keras.callbacks.LambdaCallback(on_epoch_end=lambda batch, logs: ft.print_function(model.layers[3].get_weights()))
+        CBlist = [print_weights1,print_weights2,print_weights3]
+        '''
+        model.fit(X_train,Y_train,shuffle = False,epochs = epochs,batch_size = batch_sizes)
+        print "FINISHED..."
+
+        pred_train = model.predict(X_train)
+        eval_train = model.evaluate(X_train,Y_train)
+        print "The training set accuracy for the ANN is: ", (eval_train[1] * 100.00), "%"
+
+        pred_test = model.predict(X_test)
+        eval_test = model.evaluate(X_test,Y_test)
+        print "The test set accuracy for the ANN is: ", (eval_test[1] * 100.00), "%"
+        
+        return Y_train,Y_test,pred_train,pred_test
+
+
+def gridsearch(X_train,Y_train):
+
+    model = KerasClassifier(build_fn = buildANN,GS = True) #the most optimal batch_size,epochs pair
+    optimizer = ['SGD', 'RMSprop',"Nadam","Adam"]
+    activation = ['softsign', 'relu','softplus','softmax','tanh','sigmoid','linear','hard_sigmoid']
+    neurons = [20,40,60,80,100]
+    epochs = [75,150,300,450,600]
+    batch_sizes = [100,200,300,400,500]
+    layers = [1,2,3,4]
+    loss = ['binary_crossentropy','categorical_crossentropy']
+    param_grid = dict(loss = loss,optimizer = optimizer,neurons = neurons,epochs = epochs,batch_sizes = batch_sizes,layers = layers,activation = activation)
     
-    return Y_train,Y_test,pred_train,pred_test
+    grid = GridSearchCV(estimator = model,param_grid = param_grid,n_jobs = 4)
+    grid_result = grid.fit(X_train, Y_train)
+
+    # summarize results
+    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+    means = grid_result.cv_results_['mean_test_score']
+    stds = grid_result.cv_results_['std_test_score']
+    params = grid_result.cv_results_['params']
+    for mean, stdev, param in zip(means, stds, params):
+        print("%f (%f) with: %r" % (mean, stdev, param))
 
 
 
-def main():
+def main(GS = False):
     
     input_data = np.loadtxt("input_data.txt",delimiter = ",")
     output_data = np.loadtxt("output_data.txt",delimiter = ",")
@@ -140,14 +146,15 @@ def main():
     test_output = []
 
 
+
     for i in range(input_data.shape[0]):
         if i in train_rows:
             train_input.append(input_data[i])
-            train_output.append(output_data[i])
+            train_output.append(output_data[i][0])
 
         else:
             test_input.append(input_data[i])
-            test_output.append(output_data[i])
+            test_output.append(output_data[i][0])
 
     train_input = np.asarray(train_input)
     train_output = np.asarray(train_output)
@@ -155,9 +162,13 @@ def main():
     test_output = np.asarray(test_output)
 
     
+    if (GS):
+        gridsearch(train_input,train_output)
+        print "GridSearch is over"
+        return
 
 
-    A,B,C,D = keras_ANN(train_input,train_output,test_input,test_output,batch_size = 100,epochs = 150,optimizer = 'Adam')
+    A,B,C,D = buildANN(train_input,train_output,test_input,test_output,GS = GS)
 
 
     '''
@@ -172,6 +183,6 @@ def main():
     
 
 
-
+#main()
 y_train,y_test,pred_train,pred_test = main()
 #graph_hyp()
