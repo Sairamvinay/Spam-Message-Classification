@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import numpy as np
 import random as rd
-
+import h5py
 
 np.random.seed(999)
 rd.seed(999)
@@ -9,9 +9,33 @@ rd.seed(999)
 from sklearn.model_selection import cross_val_score,StratifiedKFold,GridSearchCV
 from keras.wrappers.scikit_learn import KerasClassifier
 from keras.utils import to_categorical
+from keras.callbacks import ModelCheckpoint
 import __future__ as ft
 import keras
 import grapher
+
+# Simple Keras callback which saves not only loss and acc
+# but also the layer weights at each epoch end
+class ModelAttr(keras.callbacks.Callback):
+    def on_train_begin(self, logs={}):
+        self.epoch = []
+        self.weights = []
+        self.history = {}
+        self.weights.append(self.model.weights)
+
+    def on_epoch_end(self, epoch, logs={}):
+        logs = logs or {}
+        self.epoch.append(epoch)
+        for k, v in logs.items():
+            self.history.setdefault(k, []).append(v)
+
+        modelWeights = []
+        for layer in model.layers:
+            layerWeights = []
+            for weight in layer.get_weights():
+                layerWeights.append(weight)
+            modelWeights.append(layerWeights)
+        self.weights.append(modelWeights)
 
 
 def logisticRegression(train_IP,train_OP,test_IP,test_OP):
@@ -51,11 +75,10 @@ def logisticRegression(train_IP,train_OP,test_IP,test_OP):
     return train_OP,test_OP,predictions_train,predictions_test
 
 
-
-
 #default parameters are the most optimal parameters
-def buildANN(X_train = None,Y_train=None,X_test=None,Y_test=None,hidden_layers = 3,activation = 'softsign',optimizer = 'Adam',neurons = 100,epochs = 75,batch_sizes = 400,loss = 'binary_crossentropy',GS = False):
+def buildANN(X = None, Y = None, X_train = None,Y_train=None,X_test=None,Y_test=None,hidden_layers = 3,activation = 'softsign',optimizer = 'Adam',neurons = 100,epochs = 75,batch_sizes = 400,loss = 'binary_crossentropy',GS = False,CV = False):
     print "Welcome to Keras ANN"
+    seed = 999
     num_cols_train = 8451 #hardcoded for now
     final_op_layers = 1
     final_op_activation = "sigmoid"
@@ -64,40 +87,69 @@ def buildANN(X_train = None,Y_train=None,X_test=None,Y_test=None,hidden_layers =
         final_op_activation = "softmax"
 
 
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(neurons, input_dim=num_cols_train,activation = activation))
-    
-    for i in range(hidden_layers):
-        model.add(keras.layers.Dense(neurons,activation = activation))
+
+    if not CV:
+        model = keras.models.Sequential()
+        model.add(keras.layers.Dense(neurons, input_dim=num_cols_train,activation = activation))
+        
+        for i in range(hidden_layers):
+            model.add(keras.layers.Dense(neurons,activation = activation))
 
 
-    model.add(keras.layers.Dense(final_op_layers,activation = final_op_activation))
-    print "Let's now compile the model"
-    model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
-    
-    if GS:
-        return model
+        model.add(keras.layers.Dense(final_op_layers,activation = final_op_activation))
+        print "Let's now compile the model"
+        model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
+        
+        if GS:
+            return model
+
+        else:
+
+            # filepath="weights/weights-improvement-{epoch:02d}.hdf5"
+            # checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_weights_only=True, mode='auto')
+            # callbacks_list = [checkpoint]
+            
+
+            
+            model.fit(X_train,Y_train,shuffle = False,epochs = epochs,batch_size = batch_sizes)
+            print "FINISHED..."
+            pred_train = model.predict(X_train)
+            eval_train = model.evaluate(X_train,Y_train)
+            print "The training set accuracy for the ANN is: ", (eval_train[1] * 100.00), "%"
+
+            pred_test = model.predict(X_test)
+            eval_test = model.evaluate(X_test,Y_test)
+            print "The test set accuracy for the ANN is: ", (eval_test[1] * 100.00), "%"
+            
+            return Y_train,Y_test,pred_train,pred_test
+
 
     else:
+        kfold = StratifiedKFold(n_splits=10, shuffle=True, random_state=seed)
+        cvscores = []
+        for train, test in kfold.split(X, Y):
+          # create model
+            print("TRAIN:", len(train.tolist()), "TEST:", len(test.tolist()))
+            model = keras.models.Sequential()
+            model.add(keras.layers.Dense(neurons, input_dim=num_cols_train,activation = activation))
+            
+            for i in range(hidden_layers):
+                model.add(keras.layers.Dense(neurons,activation = activation))
 
-        #fix this later
-        '''print_weights1 = keras.callbacks.LambdaCallback(on_epoch_end=lambda epochs, logs: ft.print_function(model.layers[1].get_weights()))
-        print_weights2 = keras.callbacks.LambdaCallback(on_epoch_end=lambda batch, logs: ft.print_function(model.layers[2].get_weights()))
-        print_weights3 = keras.callbacks.LambdaCallback(on_epoch_end=lambda batch, logs: ft.print_function(model.layers[3].get_weights()))
-        CBlist = [print_weights1,print_weights2,print_weights3]
-        '''
-        model.fit(X_train,Y_train,shuffle = False,epochs = epochs,batch_size = batch_sizes)
-        print "FINISHED..."
 
-        pred_train = model.predict(X_train)
-        eval_train = model.evaluate(X_train,Y_train)
-        print "The training set accuracy for the ANN is: ", (eval_train[1] * 100.00), "%"
+            model.add(keras.layers.Dense(final_op_layers,activation = final_op_activation))
+            #print "Let's now compile the model"
+            model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
+            model.fit(X[train], Y[train],shuffle = False,epochs = epochs,batch_size = batch_sizes)
 
-        pred_test = model.predict(X_test)
-        eval_test = model.evaluate(X_test,Y_test)
-        print "The test set accuracy for the ANN is: ", (eval_test[1] * 100.00), "%"
+            scores = model.evaluate(X[test], Y[test])
+            #print "FINISHED..."
+            print("Accuracy is %s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
+            cvscores.append(scores[1] * 100)
         
-        return Y_train,Y_test,pred_train,pred_test
+        print("mean: %.2f%% std:(+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
+        return None,None,None,None
+
 
 
 def gridsearch(X_train,Y_train):
@@ -168,9 +220,8 @@ def main(GS = False):
         return
 
 
-    A,B,C,D = buildANN(train_input,train_output,test_input,test_output,GS = GS)
-
-
+    A,B,C,D = buildANN(X = input_data,Y = output_data,X_train = train_input, Y_train = train_output, X_test = test_input, Y_test = test_output,GS = GS,CV=True)
+    
     '''
 
     print "Logistic Regression gives us these results:"
@@ -183,6 +234,9 @@ def main(GS = False):
     
 
 
-#main()
+
 y_train,y_test,pred_train,pred_test = main()
-#graph_hyp()
+
+
+
+

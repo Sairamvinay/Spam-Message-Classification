@@ -75,3 +75,12 @@ def graph_hyp():
     graph_bar(activation,train_acc_activ.tolist(),"Activation function","Train Accuracy", "Train Accuracy vs Activation function")
     graph_bar(loss,train_acc_loss.tolist(),"Loss function","Train Accuracy", "Train Accuracy vs Loss function")
 
+
+def main():
+    foldno = [1,2,3,4,5,6,7,8,9,10]
+    acc = [97.49,98.03,97.85,98.57,98.57,97.31,97.13,97.84,98.20,98.56]
+    graph_reg(foldno,acc,"Fold Number","Test Accuracy","Cross Validation results")
+
+main()
+
+
