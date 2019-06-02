@@ -81,6 +81,6 @@ def main():
     acc = [97.49,98.03,97.85,98.57,98.57,97.31,97.13,97.84,98.20,98.56]
     graph_reg(foldno,acc,"Fold Number","Test Accuracy","Cross Validation results")
 
-main()
+#main()
 
 
