@@ -7,42 +7,19 @@ np.random.seed(999)
 rd.seed(999)
 
 from sklearn.model_selection import cross_val_score,StratifiedKFold,GridSearchCV
+from sklearn.linear_model import LogisticRegression
 from keras.wrappers.scikit_learn import KerasClassifier
 from keras.utils import to_categorical
 from keras.callbacks import ModelCheckpoint
-import __future__ as ft
 import keras
 import grapher
-
-# Simple Keras callback which saves not only loss and acc
-# but also the layer weights at each epoch end
-class ModelAttr(keras.callbacks.Callback):
-    def on_train_begin(self, logs={}):
-        self.epoch = []
-        self.weights = []
-        self.history = {}
-        self.weights.append(self.model.weights)
-
-    def on_epoch_end(self, epoch, logs={}):
-        logs = logs or {}
-        self.epoch.append(epoch)
-        for k, v in logs.items():
-            self.history.setdefault(k, []).append(v)
-
-        modelWeights = []
-        for layer in model.layers:
-            layerWeights = []
-            for weight in layer.get_weights():
-                layerWeights.append(weight)
-            modelWeights.append(layerWeights)
-        self.weights.append(modelWeights)
 
 
 def logisticRegression(train_IP,train_OP,test_IP,test_OP):
     correct_pred_test = 0
     correct_pred_train = 0
     total = test_IP.shape[0]
-    lm = linear_model.LogisticRegression(solver = "lbfgs").fit(train_IP,train_OP)
+    lm = LogisticRegression(solver = "lbfgs").fit(train_IP,train_OP)
     print "The score of the Log Reg is ",lm.score(train_IP,train_OP)
 
     predictions_train = lm.predict(train_IP)
@@ -50,7 +27,7 @@ def logisticRegression(train_IP,train_OP,test_IP,test_OP):
     train_OP = train_OP.tolist()
 
     for i in range(len(predictions_train)):
-        train_OP[i] = train_OP[i][0]
+        
         if predictions_train[i] == train_OP[i]:
             correct_pred_train += 1
 
@@ -64,7 +41,7 @@ def logisticRegression(train_IP,train_OP,test_IP,test_OP):
     predictions_test = predictions_test.tolist()
 
     for i in range(len(predictions_test)):
-        test_OP[i] = test_OP[i][0]
+
         if predictions_test[i] == test_OP[i]:
             correct_pred_test += 1
 
@@ -79,7 +56,7 @@ def logisticRegression(train_IP,train_OP,test_IP,test_OP):
 def buildANN(X = None, Y = None, X_train = None,Y_train=None,X_test=None,Y_test=None,hidden_layers = 3,activation = 'softsign',optimizer = 'Adam',neurons = 100,epochs = 75,batch_sizes = 400,loss = 'binary_crossentropy',GS = False,CV = False):
     print "Welcome to Keras ANN"
     seed = 999
-    num_cols_train = 8451 #hardcoded for now
+    num_cols_train = X_train.shape[1] #hardcoded for now
     final_op_layers = 1
     final_op_activation = "sigmoid"
     if loss == 'categorical_crossentropy':
@@ -105,11 +82,8 @@ def buildANN(X = None, Y = None, X_train = None,Y_train=None,X_test=None,Y_test=
 
         else:
 
-            # filepath="weights/weights-improvement-{epoch:02d}.hdf5"
-            # checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_weights_only=True, mode='auto')
-            # callbacks_list = [checkpoint]
             
-
+            #save_the_weights()
             
             model.fit(X_train,Y_train,shuffle = False,epochs = epochs,batch_size = batch_sizes)
             print "FINISHED..."
@@ -125,6 +99,7 @@ def buildANN(X = None, Y = None, X_train = None,Y_train=None,X_test=None,Y_test=
 
 
     else:
+        #cross validation
         kfold = StratifiedKFold(n_splits=10, shuffle=True, random_state=seed)
         cvscores = []
         for train, test in kfold.split(X, Y):
@@ -176,9 +151,7 @@ def gridsearch(X_train,Y_train):
         print("%f (%f) with: %r" % (mean, stdev, param))
 
 
-
-def main(GS = False):
-    
+def load_datasets():
     input_data = np.loadtxt("input_data.txt",delimiter = ",")
     output_data = np.loadtxt("output_data.txt",delimiter = ",")
     input_data = input_data.astype(int)
@@ -186,10 +159,12 @@ def main(GS = False):
     output_data = output_data.astype(int)
     print "The dimensions of the input set are",input_data.shape
     print "The dimensions of the output set are",output_data.shape
-    
-    
+    return input_data,output_data    
+
+
+def split_data(input_data,output_data):
+
     #60-40% train test data
-    
     train_rows = rd.sample(range(input_data.shape[0]),int(0.60 * input_data.shape[0]))
     train_rows.sort()
     train_input = []
@@ -213,30 +188,43 @@ def main(GS = False):
     test_input = np.asarray(test_input)
     test_output = np.asarray(test_output)
 
+
+    return train_input,train_output,test_input,test_output
     
+
+def main(GS = False):
+    
+    input_data,output_data = load_datasets()
+    
+    train_input,train_output,test_input,test_output = split_data(input_data,output_data)
+    
+    
+
     if (GS):
         gridsearch(train_input,train_output)
         print "GridSearch is over"
         return
 
-
-    A,B,C,D = buildANN(X = input_data,Y = output_data,X_train = train_input, Y_train = train_output, X_test = test_input, Y_test = test_output,GS = GS,CV=True)
+    _,_,pred_train,pred_test= buildANN(X = input_data,Y = output_data,X_train = train_input, Y_train = train_output, X_test = test_input, Y_test = test_output,GS = GS)
     
-    '''
-
-    print "Logistic Regression gives us these results:"
-    A,B,C,D = logisticRegression(train_input,train_output,test_input,test_output) 
     
-    '''
+
+    # print "Logistic Regression gives us these results:"
+    # A,B,C,D = logisticRegression(train_input,train_output,test_input,test_output) 
+
+    return train_output,test_output,pred_train,pred_test
+    
+    
 
 
-    return A,B,C,D
+    
     
 
 
 
 y_train,y_test,pred_train,pred_test = main()
 
-
+grapher.graph_pred_acc(y_train,pred_train,"Train Accuracy")
+grapher.graph_pred_acc(y_test,pred_test,"Test Accuracy")
 
 
