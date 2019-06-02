@@ -11,6 +11,39 @@ import numpy as np
 import random as rd
 
 
+
+# Simple Keras callback which saves not only loss and acc
+# but also the layer weights at each epoch end
+class ModelAttr(keras.callbacks.Callback):
+    def on_train_begin(self, logs={}):
+        self.epoch = []
+        self.weights = []
+        self.history = {}
+        self.weights.append(self.model.weights)
+
+    def on_epoch_end(self, epoch, logs={}):
+        logs = logs or {}
+        self.epoch.append(epoch)
+        for k, v in logs.items():
+            self.history.setdefault(k, []).append(v)
+
+        modelWeights = []
+        for layer in model.layers:
+            layerWeights = []
+            for weight in layer.get_weights():
+                layerWeights.append(weight)
+            modelWeights.append(layerWeights)
+        self.weights.append(modelWeights)
+
+
+def save_the_weights():
+
+    # filepath="weights/weights-improvement-{epoch:02d}.hdf5"
+    # checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_weights_only=True, mode='auto')
+    # callbacks_list = [checkpoint]
+
+
+
 def sigmoid_function(x):
     return 1/(1 + np.exp(-x))
 
